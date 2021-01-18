@@ -26,14 +26,15 @@ include("pitfalls/lib/ScaleIntervals")
 
 -- represents pitches seeded from a given scale
 include("pitfalls/lib/Pitches")
+-- midi out to device
+midi_out = include("pitfalls/lib/midi")
 
-scale = Scale:new(2, 1, "LLsLs")
+scale = Scale:new(3, 1, "LsLsLsLsLsL")
 intervals = ScaleIntervals:new(scale)
 pitches = Pitches:new(scale, intervals, 440, 60-12-12)
-local western=require 'musicutil'
 
 engine.name = 'PolyPerc'
-local bars = 4
+local bars = 2
 local step_div = 2
 local beats_per_bar = 4
 local step_size
@@ -41,15 +42,15 @@ local steps_per_bars
 local steps_count
 local next_on_step
 local step = 0
-local duration1 = 9
-local duration2 = 14.5
+local duration1 = 2
+local duration2 = 4
 local duration = 9
 local onsteps = {}
 local offsteps = {}
 local newsteps = {}
 local degree = 1
 local scale_degrees = scale.length
-local octave = 5
+local octave = 6
 local loop_id
 local options = {}
 options.OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"}
@@ -109,12 +110,16 @@ function init()
   next_on_step = 1
   duration = duration1
   calc_steps()
+  clock.cleanup()
+  tab.print(clock.threads)
   loop_id = clock.run(step_loop)
+  print("loop_id: "..loop_id)
 end
 
 function key(n,z)
   if n == 3 and z == 1 then
   elseif n == 2 and z == 1 then
+    stop_recording()
     clock.cancel(loop_id)
   end
 end
@@ -180,7 +185,7 @@ function midi_output()
   return (params:get("output") == 2 or params:get("output") == 3)
 end
 
-function play_note_on(freq, note_num)
+function play_note_on(freq)
   if audio_engine_out() then
     engine.hz(freq)
   elseif crow_12() then
@@ -191,8 +196,19 @@ function play_note_on(freq, note_num)
   end
 
   if midi_output() then
-    midi_out_device:note_on(note_num, 96, midi_out_channel)
+    -- midi_out_device:note_on(note_num, 96, midi_out_channel)
+
+    local note_num = midi_out.hz_to_midi(freq)
+    local bend = midi_out.pitch_bend_value(note_num)
+    midi_out_device:pitchbend(math.floor(bend), midi_out_channel)
+
+    note_num = math.floor(note_num)
+    local vel = (freq < 100) and 50 or 95
+    midi_out_device:note_on(note_num, 95, midi_out_channel)
+    -- print(bend)
     table.insert(active_notes, note_num)
+    local f = string.format('%.2f', freq)
+    print(step.." on: freq: "..f.." note_num: "..note_num)
 
     --local note_off_time =
     -- Note off timeout
@@ -207,9 +223,7 @@ function note_on(deg_oct)
   local oct = deg_oct[2]
   local freq = pitches:octdegfreq(oct, deg)
   if freq then
-    local note_num = western.freq_to_note_num(freq)
-    play_note_on(freq, note_num)
-    print(step.." on: "..deg.." "..oct.." note_num: "..note_num)
+    play_note_on(freq)
     return true
   else
     print(step.." on: out of notes: "..deg.." "..oct)
@@ -223,9 +237,11 @@ function note_off(deg_oct)
     local oct = deg_oct[2]
     local freq = pitches:octdegfreq(oct, deg)
     if freq then
-      local note_num = western.freq_to_note_num(freq)
-      midi_out_device:note_off(note_num, 0, midi_out_channel)
-      print(step.." off: "..deg.." "..oct.." "..western.freq_to_note_num(freq))
+      -- midi_out_device:note_off(note_num, 0, midi_out_channel)
+      note_num = midi_out.hz_to_midi(freq)
+      midi_out_device:note_off(math.floor(note_num), 95, midi_out_channel)
+
+      print(step.." off: "..deg.." "..oct.." "..note_num)
     else
       print(step.." off: out of notes: "..deg.." "..oct)
     end
@@ -278,11 +294,13 @@ function set_end_of_loop()
 end
 
 function stop_recording()
+  print("stop_recording")
   softcut.rec_level(1,off)
   softcut.rec_level(2,off)
 end
 
 function reset_recording_loop()
+  print("reset_recording_loop")
   softcut.rec_level(1,off)
   softcut.rec_level(2,off)
   softcut.position(1,1)
@@ -339,6 +357,7 @@ function notes_on(step)
 end
 
 function step_loop()
+  print("step_loop")
   local more_notes = true
   while more_notes or (step < steps_count) do
     clock.sync(step_size)
@@ -357,10 +376,14 @@ function step_loop()
       increment_scale_degree()
     end
 
-    more_notes = notes_on(step)
+    more_notes = more_notes and notes_on(step)
   end
   stop_recording()
+
+  clock.cancel(loop_id)
   print("step loop complete")
+  softcut.position(1,1)
+  softcut.position(2,1)
 end
 
 function calc_steps()
@@ -370,5 +393,8 @@ function calc_steps()
 end
 
 function cleanup()
+  stop_recording()
+  clock.cancel(loop_id)
+  clock.cleanup()
   all_notes_off()
 end
