@@ -34,7 +34,7 @@ intervals = ScaleIntervals:new(scale)
 pitches = Pitches:new(scale, intervals, 440, 60-12-12)
 
 engine.name = 'PolyPerc'
-local bars = 2
+local bars = 4
 local step_div = 2
 local beats_per_bar = 4
 local step_size
@@ -42,15 +42,15 @@ local steps_per_bars
 local steps_count
 local next_on_step
 local step = 0
-local duration1 = 2
-local duration2 = 4
+local duration1 = 9
+local duration2 = 14.5
 local duration = 9
 local onsteps = {}
 local offsteps = {}
 local newsteps = {}
 local degree = 1
 local scale_degrees = scale.length
-local octave = 6
+local octave = 5
 local loop_id
 local options = {}
 options.OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"}
@@ -203,8 +203,8 @@ function play_note_on(freq)
     midi_out_device:pitchbend(math.floor(bend), midi_out_channel)
 
     note_num = math.floor(note_num)
-    local vel = (freq < 100) and 50 or 95
-    midi_out_device:note_on(note_num, 95, midi_out_channel)
+    local vel = (freq < 150) and 50 or 95
+    midi_out_device:note_on(note_num, vel, midi_out_channel)
     -- print(bend)
     table.insert(active_notes, note_num)
     local f = string.format('%.2f', freq)
@@ -238,8 +238,8 @@ function note_off(deg_oct)
     local freq = pitches:octdegfreq(oct, deg)
     if freq then
       -- midi_out_device:note_off(note_num, 0, midi_out_channel)
-      note_num = midi_out.hz_to_midi(freq)
-      midi_out_device:note_off(math.floor(note_num), 95, midi_out_channel)
+      local note_num = math.floor(midi_out.hz_to_midi(freq))
+      midi_out_device:note_off(note_num, 0, midi_out_channel)
 
       print(step.." off: "..deg.." "..oct.." "..note_num)
     else
@@ -347,6 +347,7 @@ function notes_on(step)
   if onsteps[step] then
     if midi_output() and newsteps[step] then
       more_notes = more_notes and note_on(newsteps[step])
+      newsteps[step] = nil
     else
       for i, deg_oct in pairs(onsteps[step]) do
         more_notes = more_notes and note_on(deg_oct)
