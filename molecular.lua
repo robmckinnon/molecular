@@ -29,13 +29,14 @@ include("pitfalls/lib/Pitches")
 -- midi out to device
 midi_out = include("pitfalls/lib/midi")
 
-scale = Scale:new(3, 1, "LsLsLsLsLsL")
-intervals = ScaleIntervals:new(scale)
-pitches = Pitches:new(scale, intervals, 440, 60-12-12)
+local scale = Scale:new(3, 2, "sLLLsLLL")
+local intervals = ScaleIntervals:new(scale)
+local midi_start = 61
+local pitches = Pitches:new(scale, intervals, 440, midi_start)
 
 engine.name = 'PolyPerc'
 local bars = 4
-local step_div = 2
+local step_div = 4
 local beats_per_bar = 4
 local step_size
 local steps_per_bars
@@ -48,9 +49,9 @@ local duration = 9
 local onsteps = {}
 local offsteps = {}
 local newsteps = {}
-local degree = 1
+local degree = 3
 local scale_degrees = scale.length
-local octave = 5
+local octave = 3
 local loop_id
 local options = {}
 options.OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"}
@@ -68,8 +69,23 @@ local on = 1
 local end_of_loop = 61
 local time_ref = 0
 local initial_loop = true
+local s = screen
+local western = require('musicutil')
+
+function redraw()
+  s.move(10,10)
+  s.text(duration1)
+  s.text(" ")
+  s.text(western.note_num_to_name(midi_start))
+  s.text(" ")
+  s.text(duration2)
+  s.update_default()
+end
 
 function init()
+  s.clear()
+  screen.line_width(1)
+
   print("init")
   midi_out_device = midi.connect(1)
   midi_out_device.event = function() end
@@ -82,8 +98,11 @@ function init()
   params:set_action("beats_per_bar", function(x) beats_per_bar = x; calc_steps() end)
   params:set_action("step_div", function(x) step_div = x; calc_steps() end)
 
+  params:add_number("midi_start", "midi_start", 60, 71, midi_start)
   params:add_control("duration1", "duration1", controlspec.new(0.25, 24, 'lin', 0.25, duration1, 'beats'))
   params:add_control("duration2", "duration2", controlspec.new(0.25, 24, 'lin', 0.25, duration2, 'beats'))
+
+  params:set_action("midi_start", function(x) midi_start = x end)
   params:set_action("duration1", function(x) duration1 = x end)
   params:set_action("duration2", function(x) duration2 = x end)
 
@@ -112,6 +131,7 @@ function init()
   calc_steps()
   clock.cleanup()
   tab.print(clock.threads)
+  redraw()
   loop_id = clock.run(step_loop)
   print("loop_id: "..loop_id)
 end
