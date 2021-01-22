@@ -44,8 +44,9 @@ local steps_count
 local next_on_step
 local step = 0
 local duration1 = 9
-local duration2 = 14.5
+local duration2 = 13.5
 local duration = 9
+local sequencesteps = {}
 local onsteps = {}
 local offsteps = {}
 local newsteps = {}
@@ -58,6 +59,7 @@ options.OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"}
 local midi_out_device
 local midi_out_channel
 local active_notes = {}
+local sequence_num = 0
 
 -- softcut vars
 local rate = 1.0
@@ -72,13 +74,66 @@ local initial_loop = true
 local s = screen
 local western = require('musicutil')
 
+local PI = 3.14159265359
+local C = 2*PI
+local qC = PI / 2
+local cx = 78
+local cy = 52
+
 function redraw()
-  s.move(10,10)
+  s.move(2,12)
   s.text(duration1)
   s.text(" ")
   s.text(western.note_num_to_name(midi_start))
   s.text(" ")
   s.text(duration2)
+  local steps_progress -- 0 to 1
+  local last_steps_progress = 0
+  local radians
+  local last_radians
+  local last_degree = 0
+  print("sequence_num: "..sequence_num)
+  print("sequences: "..#sequencesteps)
+  s.level(0)
+  s.move(cx, cy)
+  s.stroke()
+  local d = (15 / #sequencesteps)
+  local radius = 10
+
+  screen.blend_mode('Soft_Light')
+  local bright
+  for i,v in pairs(sequencesteps) do
+    bright = util.clamp(math.floor(d * (#sequencesteps - i + 3)), 2, 15)
+    s.level(bright)
+    -- last_degree = 0
+    steps_progress = 0
+    last_steps_progress = 0
+    last_radians = PI
+    if i < 50 then
+      for k,j in pairs(v) do
+        print(j[1].." "..j[2].." "..j[3])
+        steps_progress = j[1] / steps_count
+        print(steps_progress)
+        radians = PI + (steps_progress * PI)
+        if last_degree > 0 then
+          radius = 10 + (last_degree * 5)
+          s.level(bright)
+          s.arc(cx, cy, radius, last_radians, radians)
+          -- s.stroke()
+          -- s.level(0)
+        end
+        last_steps_progress = steps_progress
+        last_degree = j[2]
+        last_radians = radians
+      end
+      if last_degree > 0 then
+        s.level(bright)
+        s.arc(cx, cy, 10 + (last_degree * 5), last_radians, 2*PI)
+        s.stroke()
+        -- s.level(0)
+      end
+    end
+  end
   s.update_default()
 end
 
@@ -127,13 +182,23 @@ function init()
   initial_loop = true
   step = 0
   next_on_step = 1
+  sequence_num = 0
+  increment_sequence()
   duration = duration1
   calc_steps()
+
+  step_loop(false)
+  redraw()
+
+  initial_loop = true
+  step = 0
+  next_on_step = 1
+  sequence_num = 0
+  increment_sequence()
   clock.cleanup()
   tab.print(clock.threads)
-  redraw()
-  loop_id = clock.run(step_loop)
-  print("loop_id: "..loop_id)
+  -- loop_id = clock.run(step_loop)
+  -- print("loop_id: "..loop_id)
 end
 
 function key(n,z)
@@ -238,12 +303,12 @@ function play_note_on(freq)
   end
 end
 
-function note_on(deg_oct)
+function note_on(deg_oct, clock_on)
   local deg = deg_oct[1]
   local oct = deg_oct[2]
   local freq = pitches:octdegfreq(oct, deg)
   if freq then
-    play_note_on(freq)
+    if clock_on then play_note_on(freq) end
     return true
   else
     print(step.." on: out of notes: "..deg.." "..oct)
@@ -290,13 +355,18 @@ function init_onstep(step)
   onsteps[step] = {}
 end
 
-function add_onstep(step)
+function add_onstep(step, clock_on)
+  if clock_on == false then
+    print("seq "..sequence_num.." step "..step)
+    sequencesteps[sequence_num] = sequencesteps[sequence_num] or {}
+    table.insert(sequencesteps[sequence_num], {step, degree, octave})
+  end
   onsteps[step][#onsteps[step] + 1] = {degree, octave}
   newsteps[step] = {degree, octave}
 end
 
 function add_offstep(step)
-  off_step = step + (duration * step_div)
+  off_step = step + math.floor(duration * step_div)
   if off_step > steps_count then off_step = (off_step % steps_count) end
 
   if offsteps[off_step] == nil then offsteps[off_step] = {} end
@@ -329,20 +399,25 @@ function reset_recording_loop()
   softcut.rec_level(2,on)
 end
 
-function increment_step()
+function increment_sequence()
+  sequence_num = sequence_num + 1
+end
+
+function increment_step(record_on)
   if initial_loop and step == 0 then
-    init_recording()
+    if record_on then init_recording() end
   end
 
   step = step + 1
   if (step > steps_count) then
     -- stop_recording()
     if initial_loop then
-      set_end_of_loop()
+      if record_on then set_end_of_loop() end
       initial_loop = false
     end
-    reset_recording_loop()
+    if record_on then reset_recording_loop() end
     step = 1
+    increment_sequence()
   end
 end
 
@@ -362,29 +437,30 @@ function notes_off(step)
   end
 end
 
-function notes_on(step)
+function notes_on(step, clock_on)
   local more_notes = true
   if onsteps[step] then
     if midi_output() and newsteps[step] then
-      more_notes = more_notes and note_on(newsteps[step])
+      more_notes = more_notes and note_on(newsteps[step], clock_on)
       newsteps[step] = nil
     else
       for i, deg_oct in pairs(onsteps[step]) do
-        more_notes = more_notes and note_on(deg_oct)
+        more_notes = more_notes and note_on(deg_oct, clock_on)
       end
     end
   end
   return more_notes
 end
 
-function step_loop()
+function step_loop(clock_on)
+  clock_on = (clock_on == nil and true) or false
   print("step_loop")
   local more_notes = true
   while more_notes or (step < steps_count) do
-    clock.sync(step_size)
-    increment_step()
-    print("step: "..step)
-    notes_off(step)
+    if clock_on then clock.sync(step_size) end
+    increment_step(clock_on)
+    if clock_on then print("step: "..step) end
+    if clock_on then notes_off(step) end
 
     if step == next_on_step then
       if starts_with_another_note(step) then
@@ -392,19 +468,20 @@ function step_loop()
       else
         init_onstep(step)
       end
-      add_onstep(step)
+      add_onstep(step, clock_on)
       add_offstep(step)
       increment_scale_degree()
     end
 
-    more_notes = more_notes and notes_on(step)
+    more_notes = more_notes and notes_on(step, clock_on)
   end
-  stop_recording()
-
-  clock.cancel(loop_id)
-  print("step loop complete")
-  softcut.position(1,1)
-  softcut.position(2,1)
+  if clock_on then 
+    stop_recording()
+    clock.cancel(loop_id)
+    print("step loop complete")
+    softcut.position(1,1)
+    softcut.position(2,1)
+  end
 end
 
 function calc_steps()
