@@ -43,8 +43,8 @@ local steps_per_bars
 local steps_count
 local next_on_step
 local step = 0
-local duration1 = 9
-local duration2 = 13.5
+local duration1 = 5
+local duration2 = 7.5
 local duration = 9
 local sequencesteps = {}
 local onsteps = {}
@@ -78,21 +78,33 @@ local PI = 3.14159265359
 local C = 2*PI
 local qC = PI / 2
 local cx = 78
-local cy = 52
+local cy = 62
+
+local edit = 1
+pf.debug(false)
+
+local redrawing = false
 
 function redraw()
-  s.move(2,12)
-  s.text(duration1)
-  s.text(" ")
-  s.text(western.note_num_to_name(midi_start))
-  s.text(" ")
+  redrawing = true
+  s.clear()
+  -- s.blend_mode('over')
+  -- s.update_default()
+  s.level(edit == 1 and 15 or 8)
+  s.move(22,12)
+  s.text_right(duration1 % 1 == 0 and math.floor(duration1) or duration1)
+  s.move(31,12)
+  s.level(edit == 2 and 15 or 8)
+  s.text_center(western.note_num_to_name(midi_start))
+  s.move(40,12)
+  s.level(edit == 3 and 15 or 8)
   s.text(duration2)
   local steps_progress -- 0 to 1
   local last_steps_progress = 0
   local radians
   local last_radians
   local last_degree = 0
-  print("sequence_num: "..sequence_num)
+  -- print("sequence_num: "..sequence_num)
   print("sequences: "..#sequencesteps)
   s.level(0)
   s.move(cx, cy)
@@ -100,7 +112,13 @@ function redraw()
   local d = (15 / #sequencesteps)
   local radius = 10
 
-  screen.blend_mode('Soft_Light')
+  -- s.blend_mode('xor')
+  -- s.level(10)
+  -- s.rect(0,14, 120, 100)
+  -- s.rect(1,13, 119, 99)
+  -- s.level(1)
+  
+  -- s.fill()
   local bright
   for i,v in pairs(sequencesteps) do
     bright = util.clamp(math.floor(d * (#sequencesteps - i + 3)), 2, 15)
@@ -111,15 +129,15 @@ function redraw()
     last_radians = PI
     if i < 50 then
       for k,j in pairs(v) do
-        print(j[1].." "..j[2].." "..j[3])
+        -- print(j[1].." "..j[2].." "..j[3])
         steps_progress = j[1] / steps_count
-        print(steps_progress)
+        -- print(steps_progress)
         radians = PI + (steps_progress * PI)
         if last_degree > 0 then
           radius = 10 + (last_degree * 5)
           s.level(bright)
           s.arc(cx, cy, radius, last_radians, radians)
-          -- s.stroke()
+          s.stroke()
           -- s.level(0)
         end
         last_steps_progress = steps_progress
@@ -134,14 +152,12 @@ function redraw()
       end
     end
   end
-  s.update_default()
+  s.update()
+  redrawing = false
 end
 
 function init()
-  s.clear()
-  screen.line_width(1)
-
-  print("init")
+  pf.dprint("init")
   midi_out_device = midi.connect(1)
   midi_out_device.event = function() end
 
@@ -158,8 +174,8 @@ function init()
   params:add_control("duration2", "duration2", controlspec.new(0.25, 24, 'lin', 0.25, duration2, 'beats'))
 
   params:set_action("midi_start", function(x) midi_start = x end)
-  params:set_action("duration1", function(x) duration1 = x end)
-  params:set_action("duration2", function(x) duration2 = x end)
+  params:set_action("duration1", function(x) duration1 = x; redraw_loop() end)
+  params:set_action("duration2", function(x) duration2 = x; redraw_loop() end)
 
   params:add{type = "option", id = "output", name = "output",
     options = options.OUTPUT,
@@ -179,30 +195,65 @@ function init()
   params:set_action("midi_out_device", function(x) midi_out_device = midi.connect(x) end)
   params:set_action("midi_out_channel", function(x) all_notes_off(); midi_out_channel = x end)
 
-  initial_loop = true
-  step = 0
-  next_on_step = 1
-  sequence_num = 0
-  increment_sequence()
-  duration = duration1
-  calc_steps()
-
-  step_loop(false)
-  redraw()
-
-  initial_loop = true
-  step = 0
-  next_on_step = 1
-  sequence_num = 0
-  increment_sequence()
+  redraw_loop()
+  -- init_loop(sequencesteps)
   clock.cleanup()
   tab.print(clock.threads)
   -- loop_id = clock.run(step_loop)
   -- print("loop_id: "..loop_id)
 end
 
+function redraw_loop()
+  init_loop()
+  step_loop(false)
+  redraw()
+end
+
+function init_loop(existing)
+  initial_loop = true
+  step = 0
+  next_on_step = 1
+  sequence_num = 0
+  duration = duration1
+  calc_steps()
+  sequencesteps = existing or {}
+  onsteps = {}
+  offsteps = {}
+  newsteps = {}
+  active_notes = {}
+  degree = 3
+  octave = 3
+  increment_sequence()
+end
+
+function enc(n,d)
+  if n == 1 then
+    params:delta("cutoff", d)
+  elseif n == 2 then
+    edit_position(d)
+  elseif n ==3 then
+    change_value(d)
+  end
+end
+
+function edit_position(d)
+  edit = util.clamp(edit + d, 1, 3)
+  redraw()
+end
+
+function change_value(d)
+  if edit == 1 then
+    params:delta("duration1", d)
+  elseif edit == 2 then
+    params:delta("midi_start", d)
+  elseif edit == 3 then
+    params:delta("duration2", d)
+  end
+end
+
 function key(n,z)
   if n == 3 and z == 1 then
+    s.clear()
   elseif n == 2 and z == 1 then
     stop_recording()
     clock.cancel(loop_id)
@@ -210,7 +261,7 @@ function key(n,z)
 end
 
 function init_recording()
-  print("init_recording")
+  pf.dprint("init_recording")
   softcut.buffer_clear()
   time_ref = util.time()
   -- audio.level_adc_cut(0.75)
@@ -293,7 +344,7 @@ function play_note_on(freq)
     -- print(bend)
     table.insert(active_notes, note_num)
     local f = string.format('%.2f', freq)
-    print(step.." on: freq: "..f.." note_num: "..note_num)
+    pf.dprint(step.." on: freq: "..f.." note_num: "..note_num)
 
     --local note_off_time =
     -- Note off timeout
@@ -311,7 +362,7 @@ function note_on(deg_oct, clock_on)
     if clock_on then play_note_on(freq) end
     return true
   else
-    print(step.." on: out of notes: "..deg.." "..oct)
+    pf.dprint(step.." on: out of notes: "..deg.." "..oct)
     return false
   end
 end
@@ -326,9 +377,9 @@ function note_off(deg_oct)
       local note_num = math.floor(midi_out.hz_to_midi(freq))
       midi_out_device:note_off(note_num, 0, midi_out_channel)
 
-      print(step.." off: "..deg.." "..oct.." "..note_num)
+      pf.dprint(step.." off: "..deg.." "..oct.." "..note_num)
     else
-      print(step.." off: out of notes: "..deg.." "..oct)
+      pf.dprint(step.." off: out of notes: "..deg.." "..oct)
     end
   end
 end
@@ -348,7 +399,7 @@ end
 
 function switch_duration()
   duration = (duration == duration1 and duration2) or duration1
-  print("duration: "..duration)
+  pf.dprint("duration: "..duration)
 end
 
 function init_onstep(step)
@@ -357,7 +408,7 @@ end
 
 function add_onstep(step, clock_on)
   if clock_on == false then
-    print("seq "..sequence_num.." step "..step)
+    pf.dprint("seq "..sequence_num.." step "..step)
     sequencesteps[sequence_num] = sequencesteps[sequence_num] or {}
     table.insert(sequencesteps[sequence_num], {step, degree, octave})
   end
@@ -373,24 +424,24 @@ function add_offstep(step)
   offsteps[off_step][#offsteps[off_step] + 1] = {degree, octave}
 
   next_on_step = off_step
-  print("next_on_step: "..next_on_step)
+  pf.dprint("next_on_step: "..next_on_step)
 end
 
 function set_end_of_loop()
   end_of_loop = util.time() - time_ref + 1
-  print("end_of_loop: "..end_of_loop)
+  pf.dprint("end_of_loop: "..end_of_loop)
   softcut.loop_end(1,end_of_loop)
   softcut.loop_end(2,end_of_loop)
 end
 
 function stop_recording()
-  print("stop_recording")
+  pf.dprint("stop_recording")
   softcut.rec_level(1,off)
   softcut.rec_level(2,off)
 end
 
 function reset_recording_loop()
-  print("reset_recording_loop")
+  pf.dprint("reset_recording_loop")
   softcut.rec_level(1,off)
   softcut.rec_level(2,off)
   softcut.position(1,1)
@@ -454,7 +505,7 @@ end
 
 function step_loop(clock_on)
   clock_on = (clock_on == nil and true) or false
-  print("step_loop")
+  pf.dprint("step_loop")
   local more_notes = true
   while more_notes or (step < steps_count) do
     if clock_on then clock.sync(step_size) end
@@ -475,10 +526,10 @@ function step_loop(clock_on)
 
     more_notes = more_notes and notes_on(step, clock_on)
   end
-  if clock_on then 
+  if clock_on then
     stop_recording()
     clock.cancel(loop_id)
-    print("step loop complete")
+    pf.dprint("step loop complete")
     softcut.position(1,1)
     softcut.position(2,1)
   end
