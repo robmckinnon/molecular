@@ -50,9 +50,9 @@ local sequencesteps = {}
 local onsteps = {}
 local offsteps = {}
 local newsteps = {}
-local degree = 3
+local degree = 1
 local scale_degrees = scale.length
-local octave = 3
+local octave = 2
 local loop_id = nil
 local options = {}
 options.OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"}
@@ -119,7 +119,8 @@ function draw_mols()
   local steps_progress -- 0 to 1
   local last_steps_progress = 0
   local last_degree = 0
-
+  local ya = 16
+  local yb = 45
   for i,v in pairs(sequencesteps) do
     bright = util.clamp(math.floor(d * (#sequencesteps - i + 3)), 2, 15)
     steps_progress = 0
@@ -129,7 +130,7 @@ function draw_mols()
         if (j[1] < (step + 1)) then
           steps_progress = j[1] / steps_count
           x = steps_progress * 125
-          y = (13 + (scale_degrees - j[2] + 1) * 6)
+          y = ya + (2 - intervals:ratio(j[2])) * yb
           if last_degree > 0 then
             s.level(util.clamp(math.floor(bright/3), 1, 3))
             s.move(last_x, last_y)
@@ -160,7 +161,7 @@ function draw_mols()
         if (j[1] < (step + 1)) then
           steps_progress = j[1] / steps_count
           x = steps_progress * 125
-          y = (13 + (scale_degrees - j[2] + 1) * 6)
+          y = ya + (2 - intervals:ratio(j[2])) * yb
           s.level(bright)
           s.circle(x, y, 2)
           s.fill()
@@ -301,8 +302,8 @@ function init_loop(existing)
   offsteps = {}
   newsteps = {}
   active_notes = {}
-  degree = 3
-  octave = 3
+  degree = 1
+  octave = 2
   increment_sequence()
 end
 
