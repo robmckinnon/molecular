@@ -29,7 +29,7 @@ include("pitfalls/lib/Pitches")
 -- midi out to device
 midi_out = include("pitfalls/lib/midi")
 
-local scale = Scale:new(3, 2, "sLLLsLLL")
+local scale = Scale:new(2, 1, "LLsLLLs")
 local intervals = ScaleIntervals:new(scale)
 local midi_start = 61
 local pitches = Pitches:new(scale, intervals, 440, midi_start)
@@ -53,7 +53,7 @@ local newsteps = {}
 local degree = 3
 local scale_degrees = scale.length
 local octave = 3
-local loop_id
+local loop_id = nil
 local options = {}
 options.OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"}
 local midi_out_device
@@ -85,26 +85,105 @@ pf.debug(false)
 
 local redrawing = false
 
-function redraw()
-  redrawing = true
-  s.clear()
-  -- s.blend_mode('over')
-  -- s.update_default()
-  s.level(edit == 1 and 15 or 8)
+function draw_inputs()
+  s.level(edit == 1 and 15 or 6)
   s.move(22,12)
   s.text_right(duration1 % 1 == 0 and math.floor(duration1) or duration1)
   s.move(31,12)
-  s.level(edit == 2 and 15 or 8)
+  s.level(edit == 2 and 15 or 6)
   s.text_center(western.note_num_to_name(midi_start))
   s.move(40,12)
-  s.level(edit == 3 and 15 or 8)
+  s.level(edit == 3 and 15 or 6)
   s.text(duration2)
+end
+  
+function redraw()
+  redrawing = true
+  s.clear()
+  draw_inputs()
+  draw_mols()
+  s.update()
+  redrawing = false
+end
+
+function draw_mols()
+  -- s.level(1)
+  -- s.rect(1,14, 125, 50)
+  -- s.stroke()
+  local d = (15 / #sequencesteps)
+  local x
+  local y
+  local last_x
+  local last_y
+  local bright
+  local steps_progress -- 0 to 1
+  local last_steps_progress = 0
+  local last_degree = 0
+
+  for i,v in pairs(sequencesteps) do
+    bright = util.clamp(math.floor(d * (#sequencesteps - i + 3)), 2, 15)
+    steps_progress = 0
+    last_steps_progress = 0
+    if i < (sequence_num+1) then
+      for k,j in pairs(v) do
+        if (j[1] < (step + 1)) then
+          steps_progress = j[1] / steps_count
+          x = steps_progress * 125
+          y = (13 + (scale_degrees - j[2] + 1) * 6)
+          if last_degree > 0 then
+            s.level(util.clamp(math.floor(bright/3), 1, 3))
+            s.move(last_x, last_y)
+            s.line( (x+last_x) / 2, (y + last_y) / 2)
+            s.stroke()
+            s.level(1)
+            s.move((x+last_x) / 2, (y + last_y) / 2)
+            s.line(x, y)
+            s.stroke()
+          end
+          last_steps_progress = steps_progress
+          last_degree = (scale_degrees - j[2] + 1)
+          last_x = x
+          last_y = y
+        end
+      end
+      if last_degree > 0 then
+      end
+    end
+  end
+
+  for i,v in pairs(sequencesteps) do
+    bright = util.clamp(math.floor(d * (#sequencesteps - i + 3)), 5, 15)
+    steps_progress = 0
+    last_steps_progress = 0
+    if i < (sequence_num+1) then
+      for k,j in pairs(v) do
+        if (j[1] < (step + 1)) then
+          steps_progress = j[1] / steps_count
+          x = steps_progress * 125
+          y = (13 + (scale_degrees - j[2] + 1) * 6)
+          s.level(bright)
+          s.circle(x, y, 2)
+          s.fill()
+          s.stroke()
+          last_steps_progress = steps_progress
+          last_degree = (scale_degrees - j[2] + 1)
+          last_x = x
+          last_y = y
+        end
+        if last_degree > 0 then
+        end
+      end
+    end
+  end
+end
+
+function draw_arcs()
   local steps_progress -- 0 to 1
   local last_steps_progress = 0
   local radians
   local last_radians
   local last_degree = 0
-  -- print("sequence_num: "..sequence_num)
+  
   print("sequences: "..#sequencesteps)
   s.level(0)
   s.move(cx, cy)
@@ -127,7 +206,7 @@ function redraw()
     steps_progress = 0
     last_steps_progress = 0
     last_radians = PI
-    if i < 50 then
+    if i < 2 then
       for k,j in pairs(v) do
         -- print(j[1].." "..j[2].." "..j[3])
         steps_progress = j[1] / steps_count
@@ -137,7 +216,7 @@ function redraw()
           radius = 10 + (last_degree * 5)
           s.level(bright)
           s.arc(cx, cy, radius, last_radians, radians)
-          s.stroke()
+          -- s.stroke()
           -- s.level(0)
         end
         last_steps_progress = steps_progress
@@ -152,10 +231,12 @@ function redraw()
       end
     end
   end
-  s.update()
-  redrawing = false
 end
 
+function reset_pitches()
+  pitches = Pitches:new(scale, intervals, 440, midi_start)
+end
+  
 function init()
   pf.dprint("init")
   midi_out_device = midi.connect(1)
@@ -173,13 +254,13 @@ function init()
   params:add_control("duration1", "duration1", controlspec.new(0.25, 24, 'lin', 0.25, duration1, 'beats'))
   params:add_control("duration2", "duration2", controlspec.new(0.25, 24, 'lin', 0.25, duration2, 'beats'))
 
-  params:set_action("midi_start", function(x) midi_start = x end)
-  params:set_action("duration1", function(x) duration1 = x; redraw_loop() end)
-  params:set_action("duration2", function(x) duration2 = x; redraw_loop() end)
+  params:set_action("midi_start", function(x) midi_start = x; reset_pitches(); redraw(); end)
+  params:set_action("duration1", function(x) duration1 = x; if x < 16.5 then redraw_loop() end; end)
+  params:set_action("duration2", function(x) duration2 = x; if x < 16.5 then redraw_loop() end; end)
 
   params:add{type = "option", id = "output", name = "output",
     options = options.OUTPUT,
-    default = 2,
+    default = 1,
     action = function(value)
       all_notes_off()
       -- if value == 4 then crow.output[2].action = "{to(5,0),to(0,0.25)}"
@@ -196,16 +277,15 @@ function init()
   params:set_action("midi_out_channel", function(x) all_notes_off(); midi_out_channel = x end)
 
   redraw_loop()
-  -- init_loop(sequencesteps)
   clock.cleanup()
   tab.print(clock.threads)
-  -- loop_id = clock.run(step_loop)
-  -- print("loop_id: "..loop_id)
 end
 
 function redraw_loop()
   init_loop()
   step_loop(false)
+  while redrawing do
+  end
   redraw()
 end
 
@@ -255,9 +335,30 @@ function key(n,z)
   if n == 3 and z == 1 then
     s.clear()
   elseif n == 2 and z == 1 then
-    stop_recording()
-    clock.cancel(loop_id)
+    toggle_sequence_running()
   end
+end
+
+function toggle_sequence_running()
+  if loop_id == nil then
+    start_sequence()
+  else
+    stop_sequence()
+  end
+end
+
+function stop_sequence()
+  stop_recording()
+  clock.cancel(loop_id)
+  loop_id = nil
+end
+
+function start_sequence()
+  clock.cleanup()
+  tab.print(clock.threads)
+  init_loop(sequencesteps)
+  loop_id = clock.run(step_loop)
+  print("loop_id: "..loop_id)
 end
 
 function init_recording()
@@ -324,6 +425,7 @@ end
 function play_note_on(freq)
   if audio_engine_out() then
     engine.hz(freq)
+    print(freq)
   elseif crow_12() then
     -- crow.output[1].volts = (note_num-60)/12
     -- crow.output[2].execute()
@@ -435,9 +537,11 @@ function set_end_of_loop()
 end
 
 function stop_recording()
-  pf.dprint("stop_recording")
-  softcut.rec_level(1,off)
-  softcut.rec_level(2,off)
+  if midi_output() then
+    pf.dprint("stop_recording")
+    softcut.rec_level(1,off)
+    softcut.rec_level(2,off)
+  end
 end
 
 function reset_recording_loop()
@@ -452,14 +556,17 @@ end
 
 function increment_sequence()
   sequence_num = sequence_num + 1
+  redraw()
+  -- print("sequence_num: "..sequence_num)
 end
 
-function increment_step(record_on)
+function increment_step(clock_on, record_on)
   if initial_loop and step == 0 then
     if record_on then init_recording() end
   end
 
   step = step + 1
+  if clock_on then redraw() end
   if (step > steps_count) then
     -- stop_recording()
     if initial_loop then
@@ -492,11 +599,11 @@ function notes_on(step, clock_on)
   local more_notes = true
   if onsteps[step] then
     if midi_output() and newsteps[step] then
-      more_notes = more_notes and note_on(newsteps[step], clock_on)
+      more_notes = note_on(newsteps[step], clock_on) and more_notes
       newsteps[step] = nil
     else
       for i, deg_oct in pairs(onsteps[step]) do
-        more_notes = more_notes and note_on(deg_oct, clock_on)
+        more_notes = note_on(deg_oct, clock_on) and more_notes
       end
     end
   end
@@ -507,9 +614,9 @@ function step_loop(clock_on)
   clock_on = (clock_on == nil and true) or false
   pf.dprint("step_loop")
   local more_notes = true
-  while more_notes or (step < steps_count) do
+  while (more_notes or (step < steps_count)) do
     if clock_on then clock.sync(step_size) end
-    increment_step(clock_on)
+    increment_step(clock_on, clock_on and midi_output())
     if clock_on then print("step: "..step) end
     if clock_on then notes_off(step) end
 
