@@ -14,6 +14,8 @@ chords = include("pitfalls/lib/chords")
 
 -- maps n, LMs, sequence to scale names
 named_scales = include("pitfalls/lib/named_scales")
+-- mixin the MusicUtil scale names
+pf.pop_named_sequences(named_scales.lookup)
 
 -- represents scale with sequence of L,s steps
 include("pitfalls/lib/Scale")
@@ -29,7 +31,10 @@ include("pitfalls/lib/Pitches")
 -- midi out to device
 midi_out = include("pitfalls/lib/midi")
 
+local reverse_name = pf.reverse_name_lookup(named_scales.lookup, named_scales.names)
+local scale_name = "Major"
 local scale = Scale:new(2, 1, "LLsLLLs")
+local scale_degrees = scale.length
 local intervals = ScaleIntervals:new(scale)
 local midi_start = 61
 local pitches = Pitches:new(scale, intervals, 440, midi_start)
@@ -51,7 +56,6 @@ local onsteps = {}
 local offsteps = {}
 local newsteps = {}
 local degree = 1
-local scale_degrees = scale.length
 local octave = 2
 local loop_id = nil
 local options = {}
@@ -95,6 +99,9 @@ function draw_inputs()
   s.move(40,12)
   s.level(edit == 3 and 15 or 6)
   s.text(duration2)
+  s.move(60,12)
+  s.level(edit == 4 and 15 or 6)
+  s.text(scale_name)
 end
   
 function redraw()
@@ -237,6 +244,18 @@ end
 function reset_pitches()
   pitches = Pitches:new(scale, intervals, 440, midi_start)
 end
+
+function reset_scale(data)
+  tab.print(data)
+  if data.m == nil then
+    scale = Scale:new(data.l, data.s, data.seq)
+  else
+    scale = Scale:new(data.l, data.s, data.seq, data.m)
+  end
+  scale_degrees = scale.length
+  intervals = ScaleIntervals:new(scale)
+  reset_pitches()
+end
   
 function init()
   pf.dprint("init")
@@ -259,6 +278,18 @@ function init()
   params:set_action("duration1", function(x) duration1 = x; if x < 16.5 then redraw_loop() end; end)
   params:set_action("duration2", function(x) duration2 = x; if x < 16.5 then redraw_loop() end; end)
 
+  params:add{type = "option", id = "scale", name = "scale",
+    options = reverse_name.names,
+    default = 1,
+    action = function(value)
+      print(value)
+      value = reverse_name.names[value]
+      print(value)
+      local data = reverse_name.lookup[value]
+      reset_scale(data)
+      scale_name = value
+      redraw_loop()
+    end}
   params:add{type = "option", id = "output", name = "output",
     options = options.OUTPUT,
     default = 1,
@@ -318,7 +349,7 @@ function enc(n,d)
 end
 
 function edit_position(d)
-  edit = util.clamp(edit + d, 1, 3)
+  edit = util.clamp(edit + d, 1, 4)
   redraw()
 end
 
@@ -329,6 +360,8 @@ function change_value(d)
     params:delta("midi_start", d)
   elseif edit == 3 then
     params:delta("duration2", d)
+  elseif edit == 4 then
+    params:delta("scale", d)
   end
 end
 
@@ -398,7 +431,7 @@ function init_recording()
     -- set playback rate to normal
     softcut.rate(i,1.0)
     -- set fade time position to 0 seconds
-    softcut.fade_time(i,0)
+    softcut.fade_time(i,0.01)
 
     -- set slew time to 0.5 seconds?
     softcut.level_slew_time(i,0.5)
@@ -542,6 +575,8 @@ function stop_recording()
     pf.dprint("stop_recording")
     softcut.rec_level(1,off)
     softcut.rec_level(2,off)
+    softcut.rec(1,off)
+    softcut.rec(2,off)
   end
 end
 
@@ -636,11 +671,26 @@ function step_loop(clock_on)
   end
   if clock_on then
     stop_recording()
+    step = 1
+    local level
+    while step < steps_count do
+      step = step + 1
+      clock.sync(step_size)
+      level = util.round((steps_count - step) / steps_count, 0.01)
+      softcut.level(1, level)
+      softcut.level(2, level)
+    end
     clock.cancel(loop_id)
     pf.dprint("step loop complete")
-    softcut.position(1,1)
-    softcut.position(2,1)
+    stop_play()
   end
+end
+
+function stop_play()
+  softcut.play(1,off)
+  softcut.play(2,off)
+  softcut.enable(1,off)
+  softcut.enable(2,off)
 end
 
 function calc_steps()
@@ -651,6 +701,7 @@ end
 
 function cleanup()
   stop_recording()
+  stop_play()
   clock.cancel(loop_id)
   clock.cleanup()
   all_notes_off()
