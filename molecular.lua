@@ -139,7 +139,7 @@ function draw_mols()
           x = steps_progress * 125
           y = ya + (2 - intervals:ratio(j[2])) * yb
           if last_degree > 0 then
-            s.level(util.clamp(math.floor(bright/3), 1, 3))
+            s.level(2)
             s.move(last_x, last_y)
             s.line( (x+last_x) / 2, (y + last_y) / 2)
             s.stroke()
@@ -159,8 +159,11 @@ function draw_mols()
     end
   end
 
+  local dd = (2 / #sequencesteps)
+  local radius
   for i,v in pairs(sequencesteps) do
-    bright = util.clamp(math.floor(d * (#sequencesteps - i + 3)), 5, 15)
+    bright = util.clamp(math.floor(d * (i + 3)), 4, 15)
+    radius = util.round((dd * (#sequencesteps - i + 3)), 0.1) + 0.5
     steps_progress = 0
     last_steps_progress = 0
     if i < (sequence_num+1) then
@@ -170,7 +173,7 @@ function draw_mols()
           x = steps_progress * 125
           y = ya + (2 - intervals:ratio(j[2])) * yb
           s.level(bright)
-          s.circle(x, y, 2)
+          s.circle(x, y, radius)
           s.fill()
           s.stroke()
           last_steps_progress = steps_progress
@@ -246,7 +249,7 @@ function reset_pitches()
 end
 
 function reset_scale(data)
-  tab.print(data)
+  -- tab.print(data)
   if data.m == nil then
     scale = Scale:new(data.l, data.s, data.seq)
   else
@@ -282,9 +285,9 @@ function init()
     options = reverse_name.names,
     default = 1,
     action = function(value)
-      print(value)
+      -- print(value)
       value = reverse_name.names[value]
-      print(value)
+      -- print(value)
       local data = reverse_name.lookup[value]
       reset_scale(data)
       scale_name = value
@@ -653,7 +656,7 @@ function step_loop(clock_on)
   while (more_notes or (step < steps_count)) do
     if clock_on then clock.sync(step_size) end
     increment_step(clock_on, clock_on and midi_output())
-    if clock_on then print("step: "..step) end
+    -- if clock_on then print("step: "..step) end
     if clock_on then notes_off(step) end
 
     if step == next_on_step then
