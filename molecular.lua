@@ -1,5 +1,42 @@
--- molecular: music box generator
--- 0.1.0 @delineator
+-- Molecular
+--
+-- Simple rules lead to rich patterns.
+--
+-- Implementation of Duncan Lockerby's
+-- Molecular Music Box[0] algorithm.
+--
+-- Input primary note duration, base note,
+-- & secondary note duration.
+--
+-- Select a scale, including microtonal
+-- scales from pitfalls[1] library.
+--
+-- E.g.   5 D# 7.5  Gorgo-6
+--
+-- Requires pitfalls[1] library is
+-- also installed locally.
+--
+-- E1 change cutoff filter
+-- E2 change value
+-- E3 select step or parameter
+-- K1
+-- K2 toggle playing sequence
+-- K3
+--
+-- Pset parameters include:
+--
+--  output - audio, midi, etc
+--
+-- [0] https://www.youtube.com/
+--           watch?v=3Z8CuAC_-bg
+-- [1] https://llllllll.co/t/
+--           pitfalls/37795
+-- .................................................................
+--
+-- molecular v0.1.0 release
+-- copyright 02021 robmckinnon
+-- GNU GPL v3.0
+-- .................................................................
 
 local tab = require 'tabutil'
 
@@ -103,7 +140,7 @@ function draw_inputs()
   s.level(edit == 4 and 15 or 6)
   s.text(scale_name)
 end
-  
+
 function redraw()
   redrawing = true
   s.clear()
@@ -194,7 +231,7 @@ function draw_arcs()
   local radians
   local last_radians
   local last_degree = 0
-  
+
   print("sequences: "..#sequencesteps)
   s.level(0)
   s.move(cx, cy)
@@ -207,7 +244,7 @@ function draw_arcs()
   -- s.rect(0,14, 120, 100)
   -- s.rect(1,13, 119, 99)
   -- s.level(1)
-  
+
   -- s.fill()
   local bright
   for i,v in pairs(sequencesteps) do
@@ -259,7 +296,7 @@ function reset_scale(data)
   intervals = ScaleIntervals:new(scale)
   reset_pitches()
 end
-  
+
 function init()
   pf.dprint("init")
   midi_out_device = midi.connect(1)
