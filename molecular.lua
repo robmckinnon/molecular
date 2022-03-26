@@ -1,40 +1,62 @@
--- Molecular
+-- molecular:
+-- music box generator
 --
--- Simple rules lead to rich patterns.
+-- Create music with simple rules
+-- and a (softcut) loop.
 --
--- Implementation of Duncan Lockerby's
--- Molecular Music Box[0] algorithm.
+-- Inspired by Duncan Lockerby's
+-- molecular music box video. [0]
 --
--- Input primary note duration, base note,
--- & secondary note duration.
+-- Requires you also have
+-- pitfalls [1] installed.
 --
--- Select a scale, including microtonal
--- scales from pitfalls[1] library.
+-- Use K2 + K3 to select:
+-- * A note length (in beats) 4
+-- * The start note           E
+-- * A different note length  3
+-- * A scale by name      Major
 --
--- E.g.   5 D# 7.5  Gorgo-6
+-- Examples:
 --
--- Requires pitfalls[1] library is
--- also installed locally.
+--       4 E 3    Major
 --
--- E1 change cutoff filter
--- E2 change value
--- E3 select step or parameter
--- K1
--- K2 toggle playing sequence
--- K3
+--       9 C 14.5 Mavila-5
 --
--- Pset parameters include:
+-- Press K2 to play your track.
 --
---  output - audio, midi, etc
+-- Microtonal scale definitions
+-- come from pitfalls [1],
+-- which you must also install.
 --
--- [0] https://www.youtube.com/
---           watch?v=3Z8CuAC_-bg
+-- Attach external hardware to
+-- norns' audio in jack.
+-- Then softcut records loops.
+-- As MIDI for only the current
+-- loop is sent to MIDI out.
+-- As we use MIDI pitch-bend to
+-- play microtonal pitches.
+--
+-- Parameters > EDIT >
+-- bars                    4
+-- beats_per_bar         4
+-- step_divisioh           4
+-- output       audio | midi
+-- midi out device         4
+-- midi out channel        1
+--
+-- [0] The Molecular Music Box:
+-- how simple rules can lead to
+-- rich patterns video:
+-- https://www.youtube.com/
+--          watch?v=3Z8CuAC_-bg
+--
 -- [1] https://llllllll.co/t/
---           pitfalls/37795
+--          pitfalls/37795
+--
 -- .................................................................
 --
--- molecular v0.1.0 release
--- copyright 02021 robmckinnon
+-- molecular 0.1.0
+-- copyright 02022 robmckinnon
 -- GNU GPL v3.0
 -- .................................................................
 
@@ -66,7 +88,7 @@ include("pitfalls/lib/ScaleIntervals")
 -- represents pitches seeded from a given scale
 include("pitfalls/lib/Pitches")
 -- midi out to device
-midi_out = include("pitfalls/lib/midi")
+midi_out = include("pitfalls/lib/midi_out")
 
 local reverse_name = pf.reverse_name_lookup(named_scales.lookup, named_scales.names)
 local scale_name = "Major"
@@ -125,6 +147,71 @@ local edit = 1
 pf.debug(false)
 
 local redrawing = false
+
+function init_params()
+  params:add_number("molecular_bars", "bars", 4, 12, bars)
+  params:add_number("molecular_beats_per_bar", "beats_per_bar", 4, 12, beats_per_bar)
+  params:add_number("molecular_step_div", "step_division", 1, 16, step_div)
+
+  params:add_number("molecular_midi_start", "midi_start", 60, 71, midi_start)
+  params:add_control("molecular_duration1", "duration1", controlspec.new(0.25, 24, 'lin', 0.25, duration1, 'beats'))
+  params:add_control("molecular_duration2", "duration2", controlspec.new(0.25, 24, 'lin', 0.25, duration2, 'beats'))
+  
+  params:add{type = "option", id = "molecular_scale", name = "scale",
+    options = reverse_name.names,
+    default = 1,
+    action = function(value)
+      -- print(value)
+      value = reverse_name.names[value]
+      -- print(value)
+      local data = reverse_name.lookup[value]
+      reset_scale(data)
+      scale_name = value
+      redraw_loop()
+    end}
+  params:add{type = "option", id = "molecular_output", name = "output",
+    options = options.OUTPUT,
+    default = 1,
+    action = function(value)
+      -- params:write()
+      all_notes_off()
+      -- if value == 4 then crow.output[2].action = "{to(5,0),to(0,0.25)}"
+      -- elseif value == 5 then
+        -- crow.ii.pullup(true)
+        -- crow.ii.jf.mode(1)
+        -- end
+    end}
+    
+  params:add_number("molecular_midi_out_device", "midi out device", 1, 4, step_div)
+  params:add_number("molecular_midi_out_channel", "midi out channel", 1, 16, 1)
+
+  -- Standard MIDI Files use a pitch wheel range of +/-2 semitones = 200 cents
+  params:add_control("molecular_pitchbend_semitones", "pitchbend semitones ±", controlspec.new(1, 16, 'lin', 1, 2, '±'))
+end
+
+function init()
+  pf.dprint("============")
+  pf.dprint("init")
+  midi_out_device = midi.connect(1)
+  midi_out_device.event = function() end
+
+  init_params()
+
+  params:set_action("molecular_bars", function(x) bars = x; calc_steps() end)
+  params:set_action("molecular_beats_per_bar", function(x) beats_per_bar = x; calc_steps() end)
+  params:set_action("molecular_step_div", function(x) step_div = x; calc_steps() end)
+
+  params:set_action("molecular_midi_start", function(x) midi_start = x; reset_pitches(); redraw(); end)
+  params:set_action("molecular_duration1", function(x) duration1 = x; if x < 16.5 then redraw_loop() end; end)
+  params:set_action("molecular_duration2", function(x) duration2 = x; if x < 16.5 then redraw_loop() end; end)
+
+  params:set_action("molecular_midi_out_device", function(x) midi_out_device = midi.connect(x) end)
+  params:set_action("molecular_midi_out_channel", function(x) all_notes_off(); midi_out_channel = x end)
+
+  redraw_loop()
+  clock.cleanup()
+  tab.print(clock.threads)
+end
 
 function draw_inputs()
   s.level(edit == 1 and 15 or 6)
@@ -297,62 +384,6 @@ function reset_scale(data)
   reset_pitches()
 end
 
-function init()
-  pf.dprint("init")
-  midi_out_device = midi.connect(1)
-  midi_out_device.event = function() end
-
-  params:add_number("bars", "bars", 4, 12, bars)
-  params:add_number("beats_per_bar", "beats_per_bar", 4, 12, beats_per_bar)
-  params:add_number("step_div", "step_division", 1, 16, step_div)
-
-  params:set_action("bars", function(x) bars = x; calc_steps() end)
-  params:set_action("beats_per_bar", function(x) beats_per_bar = x; calc_steps() end)
-  params:set_action("step_div", function(x) step_div = x; calc_steps() end)
-
-  params:add_number("midi_start", "midi_start", 60, 71, midi_start)
-  params:add_control("duration1", "duration1", controlspec.new(0.25, 24, 'lin', 0.25, duration1, 'beats'))
-  params:add_control("duration2", "duration2", controlspec.new(0.25, 24, 'lin', 0.25, duration2, 'beats'))
-
-  params:set_action("midi_start", function(x) midi_start = x; reset_pitches(); redraw(); end)
-  params:set_action("duration1", function(x) duration1 = x; if x < 16.5 then redraw_loop() end; end)
-  params:set_action("duration2", function(x) duration2 = x; if x < 16.5 then redraw_loop() end; end)
-
-  params:add{type = "option", id = "scale", name = "scale",
-    options = reverse_name.names,
-    default = 1,
-    action = function(value)
-      -- print(value)
-      value = reverse_name.names[value]
-      -- print(value)
-      local data = reverse_name.lookup[value]
-      reset_scale(data)
-      scale_name = value
-      redraw_loop()
-    end}
-  params:add{type = "option", id = "output", name = "output",
-    options = options.OUTPUT,
-    default = 1,
-    action = function(value)
-      all_notes_off()
-      -- if value == 4 then crow.output[2].action = "{to(5,0),to(0,0.25)}"
-      -- elseif value == 5 then
-        -- crow.ii.pullup(true)
-        -- crow.ii.jf.mode(1)
-        -- end
-    end}
-
-  params:add_number("midi_out_device", "midi out device", 1, 4, step_div)
-  params:add_number("midi_out_channel", "midi out channel", 1, 16, 1)
-
-  params:set_action("midi_out_device", function(x) midi_out_device = midi.connect(x) end)
-  params:set_action("midi_out_channel", function(x) all_notes_off(); midi_out_channel = x end)
-
-  redraw_loop()
-  clock.cleanup()
-  tab.print(clock.threads)
-end
-
 function redraw_loop()
   init_loop()
   step_loop(false)
@@ -395,13 +426,13 @@ end
 
 function change_value(d)
   if edit == 1 then
-    params:delta("duration1", d)
+    params:delta("molecular_duration1", d)
   elseif edit == 2 then
-    params:delta("midi_start", d)
+    params:delta("molecular_midi_start", d)
   elseif edit == 3 then
-    params:delta("duration2", d)
+    params:delta("molecular_duration2", d)
   elseif edit == 4 then
-    params:delta("scale", d)
+    params:delta("molecular_scale", d)
   end
 end
 
@@ -481,19 +512,19 @@ function init_recording()
 end
 
 function audio_engine_out()
-  return params:get("output") == 1 or params:get("output") == 3
+  return params:get("molecular_output") == 1 or params:get("molecular_output") == 3
 end
 
 function crow_12()
-  return params:get("output") == 4
+  return params:get("molecular_output") == 4
 end
 
 function crow_ii()
-  return params:get("output") == 5
+  return params:get("molecular_output") == 5
 end
 
 function midi_output()
-  return (params:get("output") == 2 or params:get("output") == 3)
+  return (params:get("molecular_output") == 2 or params:get("molecular_output") == 3)
 end
 
 function play_note_on(freq)
@@ -511,7 +542,8 @@ function play_note_on(freq)
     -- midi_out_device:note_on(note_num, 96, midi_out_channel)
 
     local note_num = midi_out.hz_to_midi(freq)
-    local bend = midi_out.pitch_bend_value(note_num)
+    pitchbend_semitones = params:get("molecular_pitchbend_semitones")
+    local bend = midi_out.pitch_bend_value(note_num, pitchbend_semitones)
     midi_out_device:pitchbend(math.floor(bend), midi_out_channel)
 
     note_num = math.floor(note_num)
