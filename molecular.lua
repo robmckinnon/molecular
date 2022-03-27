@@ -92,6 +92,7 @@ midi_out = include("pitfalls/lib/midi_out")
 
 local reverse_name = pf.reverse_name_lookup(named_scales.lookup, named_scales.names)
 local scale_name = "Major"
+local reversed_name = nil
 local scale = Scale:new(2, 1, "LLsLLLs")
 local scale_degrees = scale.length
 local intervals = ScaleIntervals:new(scale)
@@ -161,12 +162,7 @@ function init_params()
     options = reverse_name.names,
     default = 1,
     action = function(value)
-      -- print(value)
-      value = reverse_name.names[value]
-      -- print(value)
-      local data = reverse_name.lookup[value]
-      reset_scale(data)
-      scale_name = value
+      reset_scale_from_params(value)
       params:write()
       redraw_loop()
     end}
@@ -199,6 +195,17 @@ function init_params()
   duration1 = params:get("molecular_duration1")
   duration2 = params:get("molecular_duration2")
   midi_out_channel = params:get("molecular_midi_out_channel")
+
+  reset_scale_from_params(params:get("molecular_scale"))
+end
+
+function reset_scale_from_params(value)
+  -- print(value)
+  value = reverse_name.names[value]
+  -- print(value)
+  reversed_name = reverse_name.lookup[value]
+  reset_scale(reversed_name)
+  scale_name = value
 end
 
 function init()
