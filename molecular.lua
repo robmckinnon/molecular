@@ -156,7 +156,7 @@ function init_params()
   params:add_number("molecular_midi_start", "midi_start", 60, 71, midi_start)
   params:add_control("molecular_duration1", "duration1", controlspec.new(0.25, 24, 'lin', 0.25, duration1, 'beats'))
   params:add_control("molecular_duration2", "duration2", controlspec.new(0.25, 24, 'lin', 0.25, duration2, 'beats'))
-  
+
   params:add{type = "option", id = "molecular_scale", name = "scale",
     options = reverse_name.names,
     default = 1,
@@ -167,13 +167,14 @@ function init_params()
       local data = reverse_name.lookup[value]
       reset_scale(data)
       scale_name = value
+      params:write()
       redraw_loop()
     end}
   params:add{type = "option", id = "molecular_output", name = "output",
     options = options.OUTPUT,
     default = 1,
     action = function(value)
-      -- params:write()
+      params:write()
       all_notes_off()
       -- if value == 4 then crow.output[2].action = "{to(5,0),to(0,0.25)}"
       -- elseif value == 5 then
@@ -181,19 +182,28 @@ function init_params()
         -- crow.ii.jf.mode(1)
         -- end
     end}
-    
+
   params:add_number("molecular_midi_out_device", "midi out device", 1, 4, step_div)
   params:add_number("molecular_midi_out_channel", "midi out channel", 1, 16, 1)
 
   -- Standard MIDI Files use a pitch wheel range of +/-2 semitones = 200 cents
   params:add_control("molecular_pitchbend_semitones", "pitchbend semitones ±", controlspec.new(1, 16, 'lin', 1, 2, '±'))
+
+  -- read default [scriptname]-01.pset from local data folder
+  params:read(norns.state.data .. "molecular-01.pset", true)
+
+  bars = params:get("molecular_bars")
+  beats_per_bar = params:get("molecular_beats_per_bar")
+  step_div = params:get("molecular_step_div")
+  midi_start = params:get("molecular_midi_start")
+  duration1 = params:get("molecular_duration1")
+  duration2 = params:get("molecular_duration2")
+  midi_out_channel = params:get("molecular_midi_out_channel")
 end
 
 function init()
   pf.dprint("============")
   pf.dprint("init")
-  midi_out_device = midi.connect(1)
-  midi_out_device.event = function() end
 
   init_params()
 
@@ -205,12 +215,19 @@ function init()
   params:set_action("molecular_duration1", function(x) duration1 = x; if x < 16.5 then redraw_loop() end; end)
   params:set_action("molecular_duration2", function(x) duration2 = x; if x < 16.5 then redraw_loop() end; end)
 
-  params:set_action("molecular_midi_out_device", function(x) midi_out_device = midi.connect(x) end)
-  params:set_action("molecular_midi_out_channel", function(x) all_notes_off(); midi_out_channel = x end)
+  params:set_action("molecular_midi_out_device", function(x) params:write(); connect_midi_out_device() end)
+  params:set_action("molecular_midi_out_channel", function(x) params:write(); all_notes_off(); midi_out_channel = x end)
+
+  if midi_output() then connect_midi_out_device() end
 
   redraw_loop()
   clock.cleanup()
   tab.print(clock.threads)
+end
+
+function connect_midi_out_device()
+  midi_out_device = midi.connect(params:get("molecular_midi_out_device"))
+  midi_out_device.event = function() end
 end
 
 function draw_inputs()
