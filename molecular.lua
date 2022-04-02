@@ -111,6 +111,8 @@ local step = 0
 local duration1 = 5
 local duration2 = 7.5
 local duration = 9
+local duration2_affects_sequence = false
+local starts_with_another = false
 local sequencesteps = {}
 local onsteps = {}
 local offsteps = {}
@@ -155,7 +157,7 @@ function init_params()
   params:add_number("molecular_step_div", "step_division", 1, 16, step_div)
 
   params:add_number("molecular_midi_start", "midi_start", 60, 71, midi_start)
-  params:add_control("molecular_duration1", "duration1", controlspec.new(0.25, 24, 'lin', 0.25, duration1, 'beats'))
+  params:add_control("molecular_duration1", "duration1", controlspec.new(0.5, 24, 'lin', 0.25, duration1, 'beats'))
   params:add_control("molecular_duration2", "duration2", controlspec.new(0.25, 24, 'lin', 0.25, duration2, 'beats'))
 
   params:add{type = "option", id = "molecular_scale", name = "scale",
@@ -408,11 +410,14 @@ function reset_scale(data)
   reset_pitches()
 end
 
+function await_redraw()
+  while redrawing do; end
+end
+
 function redraw_loop()
   init_loop()
   step_loop(false)
-  while redrawing do
-  end
+  await_redraw()
   redraw()
 end
 
@@ -448,13 +453,38 @@ function edit_position(d)
   redraw()
 end
 
+function only_duration1_affects_sequence()
+  duration2_affects_sequence = false
+  init_loop()
+  step_loop(false)
+  if duration2_affects_sequence then
+    redraw()
+    return false
+  else
+    return true
+  end
+end
+
 function change_value(d)
   if edit == 1 then
-    params:delta("molecular_duration1", d)
+    if (duration1 > 0.25 or (d > 0 and duration1 == 0.25)) and (duration1 < 16 or (d < 0 and duration1 >= 16)) then
+      await_redraw()
+      params:delta("molecular_duration1", d)
+      if only_duration1_affects_sequence() then
+        if duration1 > 0.25 and duration1 < 16.5 then
+          -- increment duration1 again
+          change_value(d)
+        else
+          redraw()
+        end
+      end
+    end
   elseif edit == 2 then
     params:delta("molecular_midi_start", d)
   elseif edit == 3 then
-    params:delta("molecular_duration2", d)
+    if duration1 > 0.25 and duration1 < 16.5 then
+      params:delta("molecular_duration2", d)
+    end
   elseif edit == 4 then
     params:delta("molecular_scale", d)
   end
@@ -626,7 +656,11 @@ function all_notes_off()
 end
 
 function starts_with_another_note(step)
-  return onsteps[step] and #onsteps[step] > 0
+  starts_with_another = onsteps[step] and #onsteps[step] > 0
+  if starts_with_another then
+    duration2_affects_sequence = true
+  end
+  return starts_with_another
 end
 
 function switch_duration()
