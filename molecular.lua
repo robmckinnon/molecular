@@ -7,8 +7,8 @@
 -- Inspired by Duncan Lockerby's
 -- molecular music box video. [0]
 --
--- Requires you also have
--- pitfalls [1] installed.
+-- Requires pitfalls. Please install
+-- pitfalls v0.4.2+ first. [1]
 --
 -- Use K2 + K3 to select:
 -- * A note length (in beats) 4
@@ -55,12 +55,24 @@
 --
 -- .................................................................
 --
--- molecular 0.1.0
+-- molecular 0.1.1
 -- copyright 02022 robmckinnon
 -- GNU GPL v3.0
 -- .................................................................
 
-local tab = require 'tabutil'
+local UI = require "ui"
+
+if not util.file_exists(_path.code.."pitfalls") then
+  function redraw()
+    screen.clear()
+    msg=UI.Message.new({"requires pitfalls","install pitfalls first"})
+    msg:redraw()
+    screen.update()
+  end
+  return
+end
+
+local tab = require "tabutil"
 
 -- various functions
 pf = include("pitfalls/lib/functions")
@@ -164,9 +176,11 @@ function init_params()
     options = reverse_name.names,
     default = 1,
     action = function(value)
-      reset_scale_from_params(value)
-      params:write()
-      redraw_loop()
+      if loop_id == nil then
+        reset_scale_from_params(value)
+        params:write()
+        redraw_loop()
+      end
     end}
   params:add{type = "option", id = "molecular_output", name = "output",
     options = options.OUTPUT,
@@ -240,17 +254,17 @@ function connect_midi_out_device()
 end
 
 function draw_inputs()
-  s.level(edit == 1 and 15 or 6)
+  s.level((edit == 1 and loop_id == nil) and 15 or 6)
   s.move(22,12)
   s.text_right(duration1 % 1 == 0 and math.floor(duration1) or duration1)
   s.move(31,12)
-  s.level(edit == 2 and 15 or 6)
+  s.level((edit == 2 and loop_id == nil) and 15 or 6)
   s.text_center(western.note_num_to_name(midi_start))
   s.move(40,12)
-  s.level(edit == 3 and 15 or 6)
+  s.level((edit == 3 and loop_id == nil) and 15 or 6)
   s.text(duration2)
   s.move(60,12)
-  s.level(edit == 4 and 15 or 6)
+  s.level((edit == 4 and loop_id == nil) and 15 or 6)
   s.text(scale_name)
 end
 
@@ -440,7 +454,7 @@ end
 
 function enc(n,d)
   if n == 1 then
-    params:delta("cutoff", d)
+    -- params:delta("cutoff", d)
   elseif n == 2 then
     edit_position(d)
   elseif n ==3 then
@@ -466,6 +480,9 @@ function only_duration1_affects_sequence()
 end
 
 function change_value(d)
+  if loop_id ~= nil then
+    return
+  end
   if edit == 1 then
     if (duration1 > 0.25 or (d > 0 and duration1 == 0.25)) and (duration1 < 16 or (d < 0 and duration1 >= 16)) then
       await_redraw()
@@ -510,6 +527,7 @@ function stop_sequence()
   stop_recording()
   clock.cancel(loop_id)
   loop_id = nil
+  redraw()
 end
 
 function start_sequence()
@@ -810,8 +828,9 @@ function step_loop(clock_on)
       softcut.level(1, level)
       softcut.level(2, level)
     end
-    clock.cancel(loop_id)
+    -- clock.cancel(loop_id)
     pf.dprint("step loop complete")
+    stop_sequence()
     stop_play()
   end
 end
@@ -832,7 +851,9 @@ end
 function cleanup()
   stop_recording()
   stop_play()
-  clock.cancel(loop_id)
+  if loop_id ~= nil then
+    clock.cancel(loop_id)
+  end
   clock.cleanup()
   all_notes_off()
 end
